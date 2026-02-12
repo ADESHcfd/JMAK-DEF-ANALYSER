@@ -1,0 +1,43 @@
+Input File Format
+-----------------
+The analysis requires input data files in a **two-column format** for each dataset:
+
+1. **Time vs Temperature**
+   - Column 1: Time (s) — simulation or experimental time points in seconds.
+   - Column 2: Temperature (C) — temperature of the material at each time point in Celsius.
+
+2. **Time vs Deformation**
+   - Column 1: Time (s) — simulation or experimental time points in seconds.
+   - Column 2: Deformation — measured strain or elongation (dimensionless or mm/mm).
+
+3. **Time vs Stress**
+   - Column 1: Time (s) — simulation or experimental time points in seconds.
+   - Column 2: Stress (MPa) — applied or measured stress in Megapascals.
+
+Formatting Guidelines
+---------------------
+- Each file should have **no missing values**; all rows must contain both time and corresponding value.
+- The **first column must always be time**.
+- Decimal points should use a period `.` (not a comma).
+- Delimiters can be tabs, spaces, or commas, but they must be consistent.
+- Header row is optional but recommended. If present, use descriptive names like:  
+  `Time(s), Temperature(C)`  
+  `Time(s), Deformation`  
+  `Time(s), Stress(MPa)`
+
+Example Rows
+------------
+Time(s)    Temperature(C)
+0.0        595.0
+1.0        592.5
+2.0        590.0
+
+Time(s)    Deformation
+0.0        0.0
+1.0        0.002
+2.0        0.004
+
+Time(s)    Stress(MPa)
+0.0        30.0
+1.0        31.5
+2.0        33.0
