@@ -1,0 +1,415 @@
+import os
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import matplotlib.cm as cm
+
+# ============================================================
+# 1. FILE PATHS (EDIT IF NEEDED)
+# ============================================================
+
+quench_files = {
+    "Slow": {
+        "temp": "/content/20_TEMP.csv",
+        "stress": "/content/20_stress.csv",
+        "deform": "/content/20_deformation.csv"
+    },
+    "q2": {
+        "temp": "/content/20_30_temp.csv",
+        "stress": "/content/20_30_stress.csv",
+        "deform": "/content/20_30_deformation.csv"
+    },
+    "Fast": {
+        "temp": "/content/30_temp.csv",
+        "stress": "/content/30_stress.csv",
+        "deform": "/content/30_deformation.csv"
+    }
+}
+
+# ============================================================
+# 2. LOAD & CLEAN FUNCTION
+# ============================================================
+
+def load_and_clean(path, col_name):
+    df = pd.read_csv(path, header=None, names=["time", col_name])
+    df["time"] = pd.to_numeric(df["time"], errors='coerce')
+    df[col_name] = pd.to_numeric(df[col_name], errors='coerce')
+    df.dropna(inplace=True)
+    df = df.sort_values("time").reset_index(drop=True)
+    return df
+
+# ============================================================
+# 3. CREATE MASTER MATRIX
+# ============================================================
+
+def create_matrix(temp_df, stress_df, deform_df):
+    time = temp_df["time"].values
+    temperature = temp_df["temperature"].values
+    stress = np.interp(time, stress_df["time"], stress_df["stress"])
+    deformation = np.interp(time, deform_df["time"], deform_df["deformation"])
+    deformation_rate = np.gradient(deformation, time)
+    cooling_rate = np.gradient(temperature, time)
+    matrix = pd.DataFrame({
+        "Time": time,
+        "Temperature": temperature,
+        "Stress": stress,
+        "Deformation": deformation,
+        "Deformation_Rate": deformation_rate,
+        "Cooling_Rate": cooling_rate
+    })
+    return matrix
+
+# ============================================================
+# 4. ZONE DEFINITIONS
+# ============================================================
+
+zones = {
+    "Zone1 (595-450C)": (595, 450),
+    "Zone2 (450-250C)": (450, 250),
+    "Zone3 (250-150C)": (250, 150)
+}
+
+def zonal_analysis(matrix):
+    results = {}
+    for zname, (high, low) in zones.items():
+        zone_df = matrix[(matrix["Temperature"] <= high) & (matrix["Temperature"] > low)]
+        if len(zone_df) == 0:
+            continue
+        stats = {
+            "Max Stress": zone_df["Stress"].max(),
+            "Avg Stress": zone_df["Stress"].mean(),
+            "Max Deformation": zone_df["Deformation"].max(),
+            "Min Deformation": zone_df["Deformation"].min(),
+            "Total Deformation Change": zone_df["Deformation"].iloc[0] - zone_df["Deformation"].iloc[-1],
+            "Max Deformation Rate": zone_df["Deformation_Rate"].abs().max(),
+            "Avg Deformation Rate": zone_df["Deformation_Rate"].mean(),
+            "Avg Cooling Rate": zone_df["Cooling_Rate"].mean(),
+            "Time in Zone (s)": zone_df["Time"].max() - zone_df["Time"].min()
+        }
+        results[zname] = stats
+    return results
+
+# ============================================================
+# 5. PROCESS ALL QUENCH CONDITIONS
+# ============================================================
+
+all_results = {}
+
+for qname, files in quench_files.items():
+    print(f"\nProcessing {qname}...")
+    temp_df = load_and_clean(files["temp"], "temperature")
+    stress_df = load_and_clean(files["stress"], "stress")
+    deform_df = load_and_clean(files["deform"], "deformation")
+    
+    matrix = create_matrix(temp_df, stress_df, deform_df)
+
+    overall_stats = {
+        "Overall Max Stress": matrix["Stress"].max(),
+        "Overall Max Deformation": matrix["Deformation"].max(),
+        "Overall Max Deformation Rate": matrix["Deformation_Rate"].abs().max(),
+        "Final Deformation": matrix["Deformation"].iloc[-1],
+        "Total Cooling Time": matrix["Time"].iloc[-1]
+    }
+
+    zone_stats = zonal_analysis(matrix)
+
+    all_results[qname] = {
+        "overall": overall_stats,
+        "zones": zone_stats,
+        "matrix": matrix
+    }
+
+# ============================================================
+# 6. DISTORTION & CRACK RISK INDEX
+# ============================================================
+
+ranking_table = []
+
+for qname, result in all_results.items():
+    overall = result["overall"]
+    zones_res = result["zones"]
+
+    DI = 0.4 * abs(overall["Final Deformation"]) + \
+         0.3 * abs(overall["Overall Max Deformation"]) + \
+         0.3 * abs(overall["Overall Max Deformation Rate"])
+
+    if "Zone2 (450-250C)" in zones_res:
+        zone2 = zones_res["Zone2 (450-250C)"]
+        CRI = 0.4 * overall["Overall Max Stress"] + \
+              0.3 * zone2["Max Stress"] + \
+              0.3 * abs(zone2["Max Deformation Rate"]) * 100
+    else:
+        CRI = 0.4 * overall["Overall Max Stress"]
+
+    ranking_table.append({
+        "Quench": qname,
+        "Distortion Index": DI,
+        "Crack Risk Index": CRI
+    })
+
+ranking_df = pd.DataFrame(ranking_table)
+
+# ============================================================
+# 7. NON-ISOTHERMAL AVRAMI–JMAK MODEL
+# ============================================================
+
+# Constants
+R = 8.314           # J/mol·K
+Q = 130e3           # Activation energy, J/mol
+k0 = 1e5            # Pre-exponential factor
+n = 2.0             # Avrami exponent
+beta = 0.05         # Cooling rate effect
+D0 = 1.2e-4         # m²/s for precipitate
+Qd = 130e3           # Activation energy for precipitate growth
+
+def compute_X(t_array, T_array):
+    X = np.zeros_like(t_array)
+    for i in range(1, len(t_array)):
+        dt = t_array[i] - t_array[i-1]
+        dTdt = (T_array[i] - T_array[i-1]) / dt
+        kT = k0 * np.exp(-Q / (R * T_array[i])) * np.exp(-beta * abs(dTdt))
+        X[i] = 1 - np.exp(-( -np.log(1 - X[i-1]) + kT * dt**n ))
+    return X
+
+output_folder = "quench_predictions"
+os.makedirs(output_folder, exist_ok=True)
+
+for qname, result in all_results.items():
+    matrix = result["matrix"].copy()
+    T_K = matrix["Temperature"].values + 273.15
+    time = matrix["Time"].values
+
+    # Transformation fraction
+    X_t = compute_X(time, T_K)
+    matrix["X"] = X_t
+
+    # Residual stress proxy
+    sigma_max = matrix["Stress"].max()
+    matrix["Sigma_res"] = sigma_max * (1 - X_t)
+
+    # Precipitate radius
+    matrix["r"] = D0 * np.exp(-Qd / (R * T_K)) * time
+
+    # Truncate at 100°C
+    matrix = matrix[matrix["Temperature"] >= 100].reset_index(drop=True)
+
+    # Save predictions
+    filename = os.path.join(output_folder, f"{qname}_predictions.txt")
+    with open(filename, "w") as f:
+        f.write("Time(s)\tTemperature(C)\tStress(MPa)\tDeformation\tX(t)\tSigma_res(MPa)\tr(m)\n")
+        for i in range(len(matrix)):
+            f.write(f"{matrix['Time'].iloc[i]:.4f}\t{matrix['Temperature'].iloc[i]:.4f}\t"
+                    f"{matrix['Stress'].iloc[i]:.4f}\t{matrix['Deformation'].iloc[i]:.4f}\t"
+                    f"{matrix['X'].iloc[i]:.6f}\t{matrix['Sigma_res'].iloc[i]:.4f}\t"
+                    f"{matrix['r'].iloc[i]:.6e}\n")
+    print(f"Predictions for {qname} saved to {filename}")
+    all_results[qname]["matrix"] = matrix
+
+# ============================================================
+# 8. PLOTTING
+# ============================================================
+
+# CCT curves (hard-coded)
+cct_temp_start = np.array([344.42, 329.84, 313.79, 310.89, 307.99, 310.95, 328.51, 353.38, 379.71, 404.57,
+                           432.34, 439.64, 444.02, 458.61, 462.99, 465.90, 470.28, 484.13, 489.95, 499.42,
+                           502.33, 511.76, 525.58, 540.15])
+cct_time_start = np.array([11926.93, 3642.96, 1224.28, 359.96, 118.71, 71.50, 35.57, 27.22, 17.20, 12.92,
+                           10.67, 10.08, 11.10, 13.71, 18.27, 26.80, 46.69, 68.45, 110.42, 141.60,
+                           500.36, 776.77, 1701.18, 7136.13])
+cct_temp_finish = np.array([197.17, 195.07, 188.58, 194.52, 201.19, 200.50, 199.82, 201.31, 211.58, 233.53,
+                            265.71, 297.88, 329.30, 354.14, 376.78, 395.75, 413.25, 416.15, 417.57, 417.55,
+                            411.60, 404.26, 386.65, 345.60])
+cct_time_finish = cct_time_start
+
+colors = plt.cm.tab10.colors
+quench_names = list(all_results.keys())
+
+plt.figure(figsize=(16,10))
+
+# Cooling Curves with CCT
+plt.subplot(2,2,1)
+for i, qname in enumerate(quench_names):
+    matrix = all_results[qname]["matrix"]
+    plt.plot(matrix["Time"], matrix["Temperature"], label=f"{qname} Cooling", color=colors[i])
+plt.plot(cct_time_start, cct_temp_start, 'k--', label="CCT Start")
+plt.plot(cct_time_finish, cct_temp_finish, 'k:', label="CCT Finish")
+plt.xlabel("Time (s)")
+plt.ylabel("Temperature (°C)")
+plt.title("Cooling Curves with CCT")
+plt.xscale("log")
+plt.grid(True, which="both", ls="--")
+plt.legend()
+
+# X(t)
+plt.subplot(2,2,2)
+for i, qname in enumerate(quench_names):
+    matrix = all_results[qname]["matrix"]
+    plt.plot(matrix["Time"], matrix["X"], label=f"{qname} X(t)", color=colors[i])
+plt.xlabel("Time (s)")
+plt.ylabel("Transformed Fraction X(t)")
+plt.title("Avrami–JMAK Transformation")
+plt.xscale("log")
+plt.ylim(0,1.05)
+plt.grid(True, which="both", ls="--")
+plt.legend()
+
+# Residual Stress
+plt.subplot(2,2,3)
+for i, qname in enumerate(quench_names):
+    matrix = all_results[qname]["matrix"]
+    plt.plot(matrix["Time"], matrix["Sigma_res"], label=f"{qname} Sigma_res", color=colors[i])
+plt.xlabel("Time (s)")
+plt.ylabel("Residual Stress (MPa)")
+plt.title("Residual Stress Evolution")
+plt.xscale("log")
+plt.grid(True, which="both", ls="--")
+plt.legend()
+
+# Precipitate Radius
+plt.subplot(2,2,4)
+for i, qname in enumerate(quench_names):
+    matrix = all_results[qname]["matrix"]
+    plt.plot(matrix["Time"], matrix["r"], label=f"{qname} r(t)", color=colors[i])
+plt.xlabel("Time (s)")
+plt.ylabel("Precipitate Radius (m)")
+plt.title("Precipitate Growth")
+plt.xscale("log")
+plt.yscale("log")
+plt.grid(True, which="both", ls="--")
+plt.legend()
+
+plt.tight_layout()
+plt.show()
+# ============================================================
+# 9. ADDITIONAL MEGA PLOTS (Stress, Deformation, Deformation Rate)
+# ============================================================
+
+plt.figure(figsize=(18,12))
+colors = plt.cm.tab10.colors
+quench_names = list(all_results.keys())
+
+# ----------------- Stress vs Time -----------------
+plt.subplot(3,2,1)
+for i, qname in enumerate(quench_names):
+    matrix = all_results[qname]["matrix"]
+    plt.plot(matrix["Time"], matrix["Stress"], label=qname, color=colors[i])
+plt.scatter(cct_time_start, cct_temp_start, color="orange", label="CCT Curve", zorder=5)
+plt.title("Stress vs Time with CCT Overlay")
+plt.xlabel("Time (s)")
+plt.ylabel("Stress (MPa)")
+plt.legend()
+plt.grid(True)
+
+# ----------------- Deformation vs Time -----------------
+plt.subplot(3,2,2)
+for i, qname in enumerate(quench_names):
+    matrix = all_results[qname]["matrix"]
+    plt.plot(matrix["Time"], matrix["Deformation"], label=qname, color=colors[i])
+plt.title("Deformation vs Time")
+plt.xlabel("Time (s)")
+plt.ylabel("Deformation")
+plt.legend()
+plt.grid(True)
+
+# ----------------- Deformation Rate vs Time -----------------
+plt.subplot(3,2,3)
+for i, qname in enumerate(quench_names):
+    matrix = all_results[qname]["matrix"]
+    plt.plot(matrix["Time"], matrix["Deformation_Rate"], label=qname, color=colors[i])
+plt.title("Deformation Rate vs Time")
+plt.xlabel("Time (s)")
+plt.ylabel("Deformation Rate")
+plt.legend()
+plt.grid(True)
+
+# ----------------- Cooling Curves with CCT -----------------
+plt.subplot(3,2,4)
+for i, qname in enumerate(quench_names):
+    matrix = all_results[qname]["matrix"]
+    plt.plot(matrix["Time"], matrix["Temperature"], label=f"{qname} Cooling", color=colors[i])
+plt.plot(cct_time_start, cct_temp_start, 'k--', label="CCT ")
+plt.plot(cct_time_finish, cct_temp_finish, 'k:', label="CCT ")
+plt.title("Cooling Curves with CCT")
+plt.xlabel("Time (s)")
+plt.ylabel("Temperature (°C)")
+plt.xscale("log")
+plt.grid(True, which="both", ls="--")
+plt.legend()
+
+# ----------------- X(t) -----------------
+plt.subplot(3,2,5)
+for i, qname in enumerate(quench_names):
+    matrix = all_results[qname]["matrix"]
+    plt.plot(matrix["Time"], matrix["X"], label=f"{qname} X(t)", color=colors[i])
+plt.title("Avrami–JMAK Transformation Fraction X(t)")
+plt.xlabel("Time (s)")
+plt.ylabel("X(t)")
+plt.xscale("log")
+plt.ylim(0,1.05)
+plt.grid(True, which="both", ls="--")
+plt.legend()
+
+# ----------------- Residual Stress & Precipitate Radius -----------------
+plt.subplot(3,2,6)
+for i, qname in enumerate(quench_names):
+    matrix = all_results[qname]["matrix"]
+    plt.plot(matrix["Time"], matrix["Sigma_res"], label=f"{qname} Sigma_res", color=colors[i])
+    plt.plot(matrix["Time"], matrix["r"], label=f"{qname} r(t)", linestyle='--', color=colors[i])
+plt.title("Residual Stress & Precipitate Growth")
+plt.xlabel("Time (s)")
+plt.ylabel("Residual Stress (MPa) / r(m)")
+plt.xscale("log")
+plt.yscale("log")
+plt.grid(True, which="both", ls="--")
+plt.legend()
+
+plt.tight_layout()
+plt.show()
+# ============================================================
+# 10. COMBINED RESULTS TABLE (MATRIX FORMAT)
+# ============================================================
+
+combined_rows = []
+
+for qname, result in all_results.items():
+    # Overall row
+    overall = result["overall"]
+    combined_rows.append({
+        "Quench": qname,
+        "Zone": "Overall",
+        "Max Stress": overall["Overall Max Stress"],
+        "Avg Stress": "-",  # Overall doesn't have avg
+        "Max Deformation": overall["Overall Max Deformation"],
+        "Min Deformation": "-",
+        "Total Deformation Change": "-",
+        "Max Deformation Rate": overall["Overall Max Deformation Rate"],
+        "Avg Deformation Rate": "-",
+        "Avg Cooling Rate": "-",
+        "Time in Zone (s)": overall["Total Cooling Time"],
+    })
+
+    # Zonal rows
+    zones_res = result["zones"]
+    for zone_name, stats in zones_res.items():
+        combined_rows.append({
+            "Quench": qname,
+            "Zone": zone_name,
+            "Max Stress": stats["Max Stress"],
+            "Avg Stress": stats["Avg Stress"],
+            "Max Deformation": stats["Max Deformation"],
+            "Min Deformation": stats["Min Deformation"],
+            "Total Deformation Change": stats["Total Deformation Change"],
+            "Max Deformation Rate": stats["Max Deformation Rate"],
+            "Avg Deformation Rate": stats["Avg Deformation Rate"],
+            "Avg Cooling Rate": stats["Avg Cooling Rate"],
+            "Time in Zone (s)": stats["Time in Zone (s)"],
+        })
+
+# Create DataFrame
+combined_df = pd.DataFrame(combined_rows)
+
+# Print table nicely
+print("\n" + "="*80)
+print("COMBINED QUENCH RESULTS TABLE")
+print("="*80)
+print(combined_df.to_string(index=False, float_format="{:.4f}".format))
