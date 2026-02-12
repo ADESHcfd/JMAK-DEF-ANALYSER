@@ -1,0 +1,58 @@
+Thermal-Stress Material Analysis – Judgement
+===========================================
+
+Overview
+--------
+This document summarizes the analysis performed on multiple thermal-stress datasets (r1, r2, r3). The goal is to evaluate material behavior under varying temperature, stress, and deformation conditions, and to assess residual stress and transformation progression.
+
+Key Observations
+----------------
+1. Temperature & Stress
+   - Temperature decreases over time in all runs, simulating cooling.
+   - Stress initially rises as temperature drops, reaching a peak before gradually decreasing.
+   - The peak stress occurs at higher temperatures in r1 compared to r2 and r3.
+
+2. Deformation
+   - Deformation decreases over time across all datasets, correlating with temperature reduction.
+   - Early stages show faster deformation changes, which stabilize later.
+
+3. Transformation Fraction (X(t))
+   - Transformation fraction increases rapidly during the early stages of cooling.
+   - It reaches near saturation at later times (~0.1017 for r2/r3, ~0.0027 for r1), indicating most transformation is completed.
+   - Differences in X(t) suggest that r2 and r3 undergo a more extensive transformation process than r1.
+
+4. Residual Stress (Sigma_res)
+   - Residual stress remains relatively constant after initial stabilization.
+   - r1 shows higher residual stress (~263 MPa) than r2 (~237 MPa) and r3 (~199 MPa), indicating differences in cooling or initial stress conditions.
+   - Very low residual stress values (e-12 to e-20) imply numerical rounding or near-complete stress relaxation in some runs.
+
+5. Precipitate Radius (r)
+   - Precipitate radius generally decreases over time due to cooling.
+   - r1 shows the smallest changes in r (~10^-6 m), while r2 and r3 have slightly larger radii changes (~10^-19 m), reflecting differences in microstructural evolution.
+
+Comparative Insights
+-------------------
+- r1 stabilizes faster in transformation fraction but maintains higher residual stress.
+- r2 and r3 achieve higher transformation fractions, lower residual stress, and smaller deformation, suggesting more uniform thermal treatment or slower cooling rates.
+- The evolution of r(m) indicates that precipitate growth or shrinkage is minimal but slightly more pronounced in r2 and r3.
+
+Conclusions
+-----------
+1. Cooling process strongly affects stress, deformation, and transformation.
+2. Higher residual stress in r1 indicates potential for microstructural defects if cooling is too rapid.
+3. Saturation of X(t) in r2 and r3 implies these runs achieve a more complete phase transformation.
+4. Minimal change in precipitate radius suggests thermal treatment stabilizes microstructure at later stages.
+5. Overall, r2 and r3 represent more stable material behavior compared to r1.
+
+Recommendations
+---------------
+- Optimize cooling rates to balance transformation completion and residual stress.
+- Monitor deformation and stress in early stages to prevent structural instability.
+- Consider post-treatment stress relief to reduce residual stress in fast-cooled runs.
+- Use r2/r3 as reference for designing future thermal treatments.
+
+Author
+------
+Your Name  
+Date: 2026-02-12  
+
