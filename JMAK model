@@ -1,0 +1,132 @@
+Project: JMAK (Johnson-Mehl-Avrami-Kolmogorov) Model Material Analysis
+=======================================================================
+
+Purpose
+-------
+This project implements the **JMAK model** to analyze phase transformation kinetics in materials.  
+The Johnson-Mehl-Avrami-Kolmogorov (JMAK) model is widely used to describe **nucleation and growth processes** during phase transformations, such as crystallization, precipitation, or solid-state reactions.  
+
+Using the model, this analysis allows:
+- Estimation of transformation fraction over time.
+- Prediction of material behavior under thermal treatments.
+- Correlation of stress, deformation, and temperature during transformations.
+- Comparison of different experimental or simulation runs (r1, r2, r3, etc.).
+
+JMAK Model Overview
+-------------------
+The **Johnson-Mehl-Avrami-Kolmogorov (JMAK) model** is a mathematical framework used to describe **the kinetics of phase transformations** in solids.  
+It provides a relation between **the fraction of transformed material** and **time** under isothermal or non-isothermal conditions.
+
+**Key Equation:**
+X(t) = 1 − exp(−k * t^n)  
+
+Where:  
+- `X(t)` = fraction of material transformed at time `t` (0 ≤ X ≤ 1)  
+- `k` = rate constant (depends on temperature and material properties)  
+- `n` = Avrami exponent (depends on nucleation type, growth dimensionality, and impingement)  
+
+**Interpretation of Parameters:**
+1. **Avrami exponent (n):**
+   - Describes the mechanism of nucleation and growth.
+   - Typical values:
+     - n ≈ 1 → One-dimensional growth (needle-like)
+     - n ≈ 2 → Two-dimensional growth (plate-like)
+     - n ≈ 3 → Three-dimensional growth (spherical)
+   - Also affected by whether nucleation is continuous or instantaneous.  
+
+2. **Rate constant (k):**
+   - Represents the overall transformation rate.
+   - Strongly temperature-dependent, often expressed using the Arrhenius relation:
+     k = k₀ * exp(−Q/(R*T))  
+     where Q is activation energy, R is the gas constant, and T is absolute temperature.  
+
+3. **Fraction transformed (X(t)):**
+   - Starts at 0 (no transformation) and approaches 1 as the transformation completes.  
+
+**Assumptions of JMAK Model:**
+- Homogeneous nucleation (nucleation occurs randomly throughout the material).  
+- Isotropic growth (growth rate same in all directions).  
+- Constant nucleation and growth rates during isothermal conditions.  
+- Overlapping of growing transformed regions is accounted for statistically.  
+
+Input File Format
+-----------------
+The analysis requires time-based datasets, generally in **two-column format**. Each input file corresponds to one of the following types:
+
+1. **Time vs Temperature**
+   - Column 1: Time (s)
+   - Column 2: Temperature (°C)
+
+2. **Time vs Deformation**
+   - Column 1: Time (s)
+   - Column 2: Deformation (dimensionless strain or mm/mm)
+
+3. **Time vs Stress**
+   - Column 1: Time (s)
+   - Column 2: Stress (MPa)
+
+**Formatting Guidelines:**
+- Time column must be consistent across all datasets.
+- Use period `.` for decimals.
+- Columns can be separated by tabs, spaces, or commas.
+- Optional header row recommended, e.g.:
+  `Time(s), Temperature(C)`  
+  `Time(s), Deformation`  
+  `Time(s), Stress(MPa)`
+
+Analysis Procedure
+------------------
+1. **Load Input Data:** Import all datasets into the analysis environment (Python, MATLAB, or Excel).  
+2. **Data Preprocessing:**
+   - Ensure time columns align; interpolate if necessary.
+   - Convert units if needed (e.g., MPa → Pa).  
+3. **JMAK Model Implementation:**
+   - Transformation fraction `X(t)` is modeled using:  
+     X(t) = 1 − exp(−k * t^n)  
+   - Fit model parameters `k` and `n` to experimental or simulation data using regression techniques.  
+4. **Derived Calculations:**
+   - Residual stress `σ_res`
+   - Deformation rate  
+5. **Visualization:**
+   - Plot **Time vs Temperature**, **Time vs Stress**, **Time vs Deformation**, **Time vs X(t)**, **Time vs σ_res**
+   - Compare multiple runs (r1, r2, r3) for trends.  
+6. **Interpretation:**
+   - Observe phase transformation kinetics.
+   - Identify critical transformation points and stress peaks.
+   - Assess material stability after transformations.  
+
+Observations and Recommendations
+---------------------------------
+- Transformation fraction `X(t)` typically starts at 0 and approaches 1 asymptotically.  
+- Stress increases during initial cooling and decreases as the material relaxes.  
+- Deformation accumulates gradually, often stabilizing at later times.  
+- Residual stress is critical for predicting long-term material behavior.  
+- Always validate the input data and the time alignment across datasets.  
+
+Output
+------
+- Graphs of **Time vs Temperature, Stress, Deformation, X(t), σ_res**  
+- Fitted JMAK parameters `k` and `n`  
+- Summary of maximum, minimum, and final values  
+- Comparative plots for multiple runs  
+
+Dependencies
+------------
+- Python (recommended: `numpy`, `pandas`, `matplotlib`, `scipy`)  
+- OR MATLAB  
+- OR Excel/CSV tools for simple analysis  
+
+References
+----------
+1. Avrami, M. (1939). *Kinetics of Phase Change. I.* Journal of Chemical Physics, 7, 1103–1112.  
+2. Johnson, W. A., & Mehl, R. F. (1939). *Reaction Kinetics in Processes of Nucleation and Growth.* Trans. AIME, 135, 416–442.  
+3. Kolmogorov, A. N. (1937). *On the Statistical Theory of Crystallization of Metals.* Bull. Acad. Sci. USSR, 1, 355–359.  
+4. Christian, J. W. (2002). *The Theory of Transformations in Metals and Alloys.* Pergamon.  
+
+License
+-------
+This repository is provided for educational and research purposes. Users are free to modify for their own analysis.
+
+Contact
+-------
+For questions, suggestions, or contributions, contact [Your Name / Email].
